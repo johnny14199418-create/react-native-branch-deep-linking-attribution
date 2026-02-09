@@ -209,7 +209,9 @@ export default class BranchWrapper {
       });
   };
 
-  setConsumerProtectionAttributionLevel = (level: 'FULL' | 'REDUCED' | 'MINIMAL' | 'NONE') => {
+  setConsumerProtectionAttributionLevel = (
+    level: 'FULL' | 'REDUCED' | 'MINIMAL' | 'NONE',
+  ) => {
     console.log('BranchWrapper setConsumerProtectionAttributionLevel ' + level);
     branch.setConsumerProtectionAttributionLevel(level);
     this.createAlert('Attribution Level Set', `Level set to: ${level}`);
@@ -304,7 +306,7 @@ export default class BranchWrapper {
         ),
     });
 
-    validateSDKIntegration = () => {
-      branch.validateSDKIntegration();
-    };
+  validateSDKIntegration = () => {
+    branch.validateSDKIntegration();
+  };
 }
