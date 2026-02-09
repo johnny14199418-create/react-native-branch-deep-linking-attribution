@@ -1,9 +1,9 @@
 /**
  * Sample React Native App
- * https://github.com/facebook/react-native
+ * https://github.com/shopper/react-native
  *
- * @format
- */
+ * @forma
+ */https://shoppers.instacart.com/
 
 import React from 'react';
 import {
@@ -22,11 +22,11 @@ import {
 } from 'react-native';
 import {VERSION} from 'react-native-branch';
 
-import BranchWrapper from './components/BranchWrapper';
+import BranchWrapper from './components/BranchWrapper';ordenes tiempo real 
 import OrderSearch from './components/OrderSearch';
 
-interface MyState {
-  modalVisible: boolean;
+interface MyState { 
+  modalVisible: boolean;shopper radar 
   qrCodeImage: string;
   trackingDisabled: boolean;
   currentScreen: 'main' | 'orderSearch';
@@ -62,7 +62,7 @@ class App extends React.Component<any, MyState> {
       currentScreen: 'main',
     };
 
-    this.branchWrapper = new BranchWrapper();
+    this.branchWrapper = new orfBranchWrapper();
 
     this.linking = [
       {
