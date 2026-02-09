@@ -20,19 +20,21 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import { VERSION } from 'react-native-branch';
+import {VERSION} from 'react-native-branch';
 
 import BranchWrapper from './components/BranchWrapper';
+import OrderSearch from './components/OrderSearch';
 
 interface MyState {
   modalVisible: boolean;
   qrCodeImage: string;
   trackingDisabled: boolean;
+  currentScreen: 'main' | 'orderSearch';
 }
 
 interface BranchButton {
   text: string;
-  onPress: Function;
+  onPress: () => void;
   image: ImageSourcePropType;
 }
 
@@ -57,6 +59,7 @@ class App extends React.Component<any, MyState> {
       qrCodeImage:
         'https://snack-web-player.s3.us-west-1.amazonaws.com/v2/46/static/media/react-native-logo.79778b9e.png',
       trackingDisabled: false,
+      currentScreen: 'main',
     };
 
     this.branchWrapper = new BranchWrapper();
@@ -105,7 +108,8 @@ class App extends React.Component<any, MyState> {
       },
       {
         text: 'Set Attribution Level',
-        onPress: () => this.branchWrapper.setConsumerProtectionAttributionLevel('REDUCED'),
+        onPress: () =>
+          this.branchWrapper.setConsumerProtectionAttributionLevel('REDUCED'),
         image: require('./images/person_FILL1_wght400_GRAD0_opsz48.png'),
       },
       {
@@ -165,14 +169,28 @@ class App extends React.Component<any, MyState> {
         text: 'Validate SDK Integration',
         onPress: this.branchWrapper.validateSDKIntegration.bind(this),
         image: require('./images/attach_money_FILL1_wght400_GRAD0_opsz48.png'),
-      }
+      },
+    ];
+
+    const demoButtons: BranchButton[] = [
+      {
+        text: 'Instacar Shopper - Order Search',
+        onPress: () => {
+          this.setState(prevState => ({
+            ...prevState,
+            currentScreen: 'orderSearch',
+          }));
+        },
+        image: require('./images/attach_money_FILL1_wght400_GRAD0_opsz48.png'),
+      },
     ];
 
     this.sections = [
-      { sectionName: 'Linking', branchButtons: this.linking },
-      { sectionName: 'Data', branchButtons: this.data },
-      { sectionName: 'Events', branchButtons: this.events },
-      { sectionName: 'Testing', branchButtons: this.testing }
+      {sectionName: 'Demo', branchButtons: demoButtons},
+      {sectionName: 'Linking', branchButtons: this.linking},
+      {sectionName: 'Data', branchButtons: this.data},
+      {sectionName: 'Events', branchButtons: this.events},
+      {sectionName: 'Testing', branchButtons: this.testing},
     ];
   }
 
@@ -187,7 +205,26 @@ class App extends React.Component<any, MyState> {
   }
 
   render() {
-    const { modalVisible, qrCodeImage } = this.state;
+    const {modalVisible, qrCodeImage, currentScreen} = this.state;
+
+    // Show OrderSearch screen if selected
+    if (currentScreen === 'orderSearch') {
+      return (
+        <SafeAreaView style={styles.container}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              this.setState(prevState => ({
+                ...prevState,
+                currentScreen: 'main',
+              }));
+            }}>
+            <Text style={styles.backButtonText}>← Volver</Text>
+          </TouchableOpacity>
+          <OrderSearch />
+        </SafeAreaView>
+      );
+    }
 
     let modal = (
       <Modal
@@ -195,7 +232,7 @@ class App extends React.Component<any, MyState> {
         transparent={true}
         visible={modalVisible}
         onRequestClose={() => {
-          this.setState({ modalVisible: false });
+          this.setState({modalVisible: false});
         }}>
         <TouchableWithoutFeedback
           onPress={() => {
@@ -231,10 +268,10 @@ class App extends React.Component<any, MyState> {
             return (
               <View key={index}>
                 <Text style={styles.sectionText}>{section.sectionName}</Text>
-                {section.branchButtons.map((branchButton, index) => {
+                {section.branchButtons.map((branchButton, btnIndex) => {
                   return (
                     <TouchableOpacity
-                      key={index}
+                      key={btnIndex}
                       style={styles.button}
                       onPress={branchButton.onPress}>
                       <Image
@@ -331,5 +368,17 @@ const styles = StyleSheet.create({
   qrCodeImage: {
     height: 200,
     width: 200,
+  },
+  backButton: {
+    padding: 15,
+    backgroundColor: '#0074DF',
+    margin: 10,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
