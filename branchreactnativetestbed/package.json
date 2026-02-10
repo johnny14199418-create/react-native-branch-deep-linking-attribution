@@ -10,6 +10,9 @@
     "test": "jest"
   },
   "dependencies": {
+    "@types/lodash.debounce": "^4.0.9",
+    "fuse.js": "^7.1.0",
+    "lodash.debounce": "^4.0.8",
     "react": "18.2.0",
     "react-native": "0.72.9",
     "react-native-branch": "file:.."

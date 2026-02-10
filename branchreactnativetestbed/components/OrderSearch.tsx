@@ -1,9 +1,15 @@
 /**
  * OrderSearch Component - Instacar Shopper Order Management
- * Demonstrates real-time order search with filtering capabilities
+ * Demonstrates real-time order search with advanced filtering capabilities
+ *
+ * Optimizations implemented:
+ * - Fuse.js for fuzzy search with error tolerance
+ * - Lodash debounce for search input performance
+ * - Hierarchical grouping by order status
+ * - Performance monitoring
  */
 
-import React, {useState, useMemo} from 'react';
+import React, {useState, useMemo, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -12,6 +18,8 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
+import Fuse from 'fuse.js';
+import debounce from 'lodash.debounce';
 
 // Order type definition
 interface Order {
@@ -22,6 +30,21 @@ interface Order {
   status: 'pending' | 'in_progress' | 'completed';
   timestamp: Date;
   items: number;
+}
+
+// Hierarchical grouping structure
+interface OrderGroup {
+  status: string;
+  statusLabel: string;
+  orders: Order[];
+  count: number;
+}
+
+// Performance metrics
+interface PerformanceMetrics {
+  lastSearchTime: number;
+  totalSearches: number;
+  averageSearchTime: number;
 }
 
 // Mock order data generator
@@ -55,26 +78,118 @@ const generateMockOrders = (): Order[] => {
 
 const OrderSearch: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [minPayment, setMinPayment] = useState<number>(0);
+  const [showGrouped, setShowGrouped] = useState<boolean>(true);
+  const [performanceMetrics, setPerformanceMetrics] =
+    useState<PerformanceMetrics>({
+      lastSearchTime: 0,
+      totalSearches: 0,
+      averageSearchTime: 0,
+    });
 
   const orders = useMemo(() => generateMockOrders(), []);
 
-  // Real-time filtering
+  // Fuse.js configuration for fuzzy search
+  const fuseOptions = useMemo(
+    () => ({
+      keys: ['id', 'storeName'],
+      threshold: 0.3, // Lower = more strict, Higher = more fuzzy
+      includeScore: true,
+      minMatchCharLength: 2,
+    }),
+    [],
+  );
+
+  const fuse = useMemo(
+    () => new Fuse(orders, fuseOptions),
+    [orders, fuseOptions],
+  );
+
+  // Debounced search query update
+  const debouncedSetQuery = useRef(
+    debounce((query: string) => {
+      setDebouncedQuery(query);
+    }, 300),
+  ).current;
+
+  useEffect(() => {
+    debouncedSetQuery(searchQuery);
+    return () => {
+      debouncedSetQuery.cancel();
+    };
+  }, [searchQuery, debouncedSetQuery]);
+
+  // Real-time filtering with performance tracking
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      const matchesSearch =
-        order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.storeName.toLowerCase().includes(searchQuery.toLowerCase());
+    const startTime = Date.now();
 
-      const matchesStatus =
-        selectedStatus === 'all' || order.status === selectedStatus;
+    let result: Order[];
 
-      const matchesPayment = order.paymentAmount >= minPayment;
+    // Use Fuse.js for fuzzy search if query exists
+    if (debouncedQuery.trim()) {
+      const fuseResults = fuse.search(debouncedQuery);
+      result = fuseResults.map(r => r.item);
+    } else {
+      result = orders;
+    }
 
-      return matchesSearch && matchesStatus && matchesPayment;
+    // Apply status filter
+    if (selectedStatus !== 'all') {
+      result = result.filter(order => order.status === selectedStatus);
+    }
+
+    // Apply payment filter
+    result = result.filter(order => order.paymentAmount >= minPayment);
+
+    const endTime = Date.now();
+    const searchTime = endTime - startTime;
+
+    return {results: result, searchTime};
+  }, [orders, debouncedQuery, selectedStatus, minPayment, fuse]);
+
+  // Update performance metrics after filtering
+  useEffect(() => {
+    if (filteredOrders.searchTime !== undefined) {
+      setPerformanceMetrics(prev => {
+        const newTotal = prev.totalSearches + 1;
+        const newAverage =
+          (prev.averageSearchTime * prev.totalSearches +
+            filteredOrders.searchTime) /
+          newTotal;
+        return {
+          lastSearchTime: filteredOrders.searchTime,
+          totalSearches: newTotal,
+          averageSearchTime: newAverage,
+        };
+      });
+    }
+  }, [filteredOrders.searchTime]);
+
+  // Hierarchical grouping by status
+  const groupedOrders = useMemo(() => {
+    if (!showGrouped) {
+      return null;
+    }
+
+    const groups: OrderGroup[] = [
+      {status: 'pending', statusLabel: 'Pendiente', orders: [], count: 0},
+      {status: 'in_progress', statusLabel: 'En Progreso', orders: [], count: 0},
+      {status: 'completed', statusLabel: 'Completado', orders: [], count: 0},
+    ];
+
+    filteredOrders.results.forEach(order => {
+      const group = groups.find(g => g.status === order.status);
+      if (group) {
+        group.orders.push(order);
+        group.count++;
+      }
     });
-  }, [orders, searchQuery, selectedStatus, minPayment]);
+
+    // Return only groups with orders
+    return groups.filter(g => g.count > 0);
+  }, [filteredOrders.results, showGrouped]);
 
   const renderOrder = ({item}: {item: Order}) => {
     const isGoodPay = item.paymentAmount >= 100;
@@ -116,18 +231,63 @@ const OrderSearch: React.FC = () => {
     );
   };
 
+  const renderGroupHeader = ({item}: {item: OrderGroup}) => {
+    return (
+      <View style={styles.groupHeader}>
+        <Text style={styles.groupHeaderText}>
+          {item.statusLabel} ({item.count})
+        </Text>
+      </View>
+    );
+  };
+
+  const renderGroupedOrder = ({item}: {item: Order | OrderGroup}) => {
+    // Check if item is a group header
+    if ('statusLabel' in item) {
+      return renderGroupHeader({item: item as OrderGroup});
+    }
+    return renderOrder({item: item as Order});
+  };
+
+  // Flatten grouped orders for FlatList
+  const flattenedData = useMemo(() => {
+    if (!groupedOrders) {
+      return filteredOrders.results;
+    }
+
+    const flattened: (Order | OrderGroup)[] = [];
+    groupedOrders.forEach(group => {
+      flattened.push(group); // Add group header
+      flattened.push(...group.orders); // Add orders in group
+    });
+    return flattened;
+  }, [groupedOrders, filteredOrders.results]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Instacar Shopper - Búsqueda de Órdenes</Text>
 
-      {/* Quick Search */}
+      {/* Performance Metrics */}
+      {performanceMetrics.totalSearches > 0 && (
+        <View style={styles.metricsContainer}>
+          <Text style={styles.metricsText}>
+            Búsqueda: {performanceMetrics.lastSearchTime.toFixed(2)}ms |
+            Promedio: {performanceMetrics.averageSearchTime.toFixed(2)}ms
+          </Text>
+        </View>
+      )}
+
+      {/* Quick Search with debounce */}
       <TextInput
         style={styles.searchInput}
-        placeholder="Buscar por ID o tienda..."
+        placeholder="Buscar por ID o tienda... (búsqueda inteligente)"
         value={searchQuery}
         onChangeText={setSearchQuery}
         placeholderTextColor="#999"
       />
+      {searchQuery !== debouncedQuery && (
+        <Text style={styles.debounceIndicator}>Buscando...</Text>
+      )}
 
       {/* Filters */}
       <View style={styles.filterContainer}>
@@ -181,18 +341,48 @@ const OrderSearch: React.FC = () => {
         </View>
       </View>
 
+      {/* Grouping Toggle */}
+      <View style={styles.groupingContainer}>
+        <Text style={styles.filterLabel}>Vista:</Text>
+        <TouchableOpacity
+          style={[
+            styles.groupingButton,
+            showGrouped && styles.groupingButtonActive,
+          ]}
+          onPress={() => setShowGrouped(!showGrouped)}>
+          <Text
+            style={[
+              styles.groupingButtonText,
+              showGrouped && styles.groupingButtonTextActive,
+            ]}>
+            {showGrouped ? '📊 Agrupado por Estado' : '📋 Lista Simple'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Results Count */}
       <Text style={styles.resultsCount}>
-        {filteredOrders.length} órdenes encontradas
+        {filteredOrders.results.length} órdenes encontradas
       </Text>
 
       {/* Order List */}
-      <FlatList
-        data={filteredOrders}
-        renderItem={renderOrder}
-        keyExtractor={item => item.id}
+      <FlatList<Order | OrderGroup>
+        data={flattenedData}
+        renderItem={showGrouped ? renderGroupedOrder : renderOrder}
+        keyExtractor={item => {
+          if ('statusLabel' in item) {
+            return `group-${item.status}`;
+          }
+          return (item as Order).id;
+        }}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={true}
+        // Performance optimization for large lists
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={10}
+        windowSize={10}
       />
     </View>
   );
@@ -364,6 +554,60 @@ const styles = StyleSheet.create({
   status_completed: {
     backgroundColor: '#D4EDDA',
     color: '#155724',
+  },
+  groupHeader: {
+    backgroundColor: '#0074DF',
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 5,
+    borderRadius: 8,
+  },
+  groupHeaderText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  metricsContainer: {
+    backgroundColor: '#f0f0f0',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  metricsText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  debounceIndicator: {
+    fontSize: 12,
+    color: '#0074DF',
+    fontStyle: 'italic',
+    marginTop: -10,
+    marginBottom: 10,
+  },
+  groupingContainer: {
+    marginBottom: 15,
+  },
+  groupingButton: {
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  groupingButtonActive: {
+    backgroundColor: '#0074DF',
+    borderColor: '#0074DF',
+  },
+  groupingButtonText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  groupingButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
 
