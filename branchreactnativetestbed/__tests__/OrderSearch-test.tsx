@@ -131,7 +131,7 @@ describe('OrderSearch Component', () => {
     });
   });
 
-  describe('Snapshot Tests', () => {
+  describe('Structure Validation', () => {
     it('renders consistent structure', () => {
       const component = renderer.create(<OrderSearch />);
       const tree = component.toJSON();

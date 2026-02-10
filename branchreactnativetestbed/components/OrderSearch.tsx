@@ -123,7 +123,7 @@ const OrderSearch: React.FC = () => {
 
   // Real-time filtering with performance tracking
   const filteredOrders = useMemo(() => {
-    const startTime = performance.now();
+    const startTime = Date.now();
 
     let result: Order[];
 
@@ -143,23 +143,29 @@ const OrderSearch: React.FC = () => {
     // Apply payment filter
     result = result.filter(order => order.paymentAmount >= minPayment);
 
-    const endTime = performance.now();
+    const endTime = Date.now();
     const searchTime = endTime - startTime;
 
-    // Update performance metrics
-    setPerformanceMetrics(prev => {
-      const newTotal = prev.totalSearches + 1;
-      const newAverage =
-        (prev.averageSearchTime * prev.totalSearches + searchTime) / newTotal;
-      return {
-        lastSearchTime: searchTime,
-        totalSearches: newTotal,
-        averageSearchTime: newAverage,
-      };
-    });
-
-    return result;
+    return {results: result, searchTime};
   }, [orders, debouncedQuery, selectedStatus, minPayment, fuse]);
+
+  // Update performance metrics after filtering
+  useEffect(() => {
+    if (filteredOrders.searchTime !== undefined) {
+      setPerformanceMetrics(prev => {
+        const newTotal = prev.totalSearches + 1;
+        const newAverage =
+          (prev.averageSearchTime * prev.totalSearches +
+            filteredOrders.searchTime) /
+          newTotal;
+        return {
+          lastSearchTime: filteredOrders.searchTime,
+          totalSearches: newTotal,
+          averageSearchTime: newAverage,
+        };
+      });
+    }
+  }, [filteredOrders.searchTime]);
 
   // Hierarchical grouping by status
   const groupedOrders = useMemo(() => {
@@ -173,7 +179,7 @@ const OrderSearch: React.FC = () => {
       {status: 'completed', statusLabel: 'Completado', orders: [], count: 0},
     ];
 
-    filteredOrders.forEach(order => {
+    filteredOrders.results.forEach(order => {
       const group = groups.find(g => g.status === order.status);
       if (group) {
         group.orders.push(order);
@@ -183,7 +189,7 @@ const OrderSearch: React.FC = () => {
 
     // Return only groups with orders
     return groups.filter(g => g.count > 0);
-  }, [filteredOrders, showGrouped]);
+  }, [filteredOrders.results, showGrouped]);
 
   const renderOrder = ({item}: {item: Order}) => {
     const isGoodPay = item.paymentAmount >= 100;
@@ -246,7 +252,7 @@ const OrderSearch: React.FC = () => {
   // Flatten grouped orders for FlatList
   const flattenedData = useMemo(() => {
     if (!groupedOrders) {
-      return filteredOrders;
+      return filteredOrders.results;
     }
 
     const flattened: (Order | OrderGroup)[] = [];
@@ -255,7 +261,7 @@ const OrderSearch: React.FC = () => {
       flattened.push(...group.orders); // Add orders in group
     });
     return flattened;
-  }, [groupedOrders, filteredOrders]);
+  }, [groupedOrders, filteredOrders.results]);
 
   return (
     <View style={styles.container}>
@@ -356,14 +362,14 @@ const OrderSearch: React.FC = () => {
 
       {/* Results Count */}
       <Text style={styles.resultsCount}>
-        {filteredOrders.length} órdenes encontradas
+        {filteredOrders.results.length} órdenes encontradas
       </Text>
 
       {/* Order List */}
-      <FlatList
+      <FlatList<Order | OrderGroup>
         data={flattenedData}
         renderItem={showGrouped ? renderGroupedOrder : renderOrder}
-        keyExtractor={(item, _index) => {
+        keyExtractor={item => {
           if ('statusLabel' in item) {
             return `group-${item.status}`;
           }
